@@ -5,13 +5,45 @@ import type { ChatMessage, ToolUseData, TodoItem, ContentBlock } from '@anthropi
 
 const WS_URL = 'ws://100.85.122.99:3457/ws';
 
+// Theme hook with system preference detection
+function useTheme() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (!localStorage.getItem('theme')) {
+        setTheme(e.matches ? 'dark' : 'light');
+      }
+    };
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  const toggle = () => setTheme(t => t === 'light' ? 'dark' : 'light');
+
+  return { theme, toggle };
+}
+
 // Format duration in milliseconds to human-readable string
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${Math.round(ms / 100) / 10}s`;
 }
 
-// SVG Icons (inline to avoid dependencies)
+// SVG Icons
 function LoaderIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -53,9 +85,34 @@ function ChevronIcon({ className, direction = 'right' }: { className?: string; d
   );
 }
 
+function SunIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
+function MoonIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
 export default function App() {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const {
     status,
@@ -87,30 +144,35 @@ export default function App() {
   };
 
   return (
-    <div style={styles.container}>
+    <div className="container">
       {/* Header */}
-      <header style={styles.header}>
-        <h1 style={styles.title}>Claude Chat</h1>
-        <div style={styles.status}>
-          <span
-            style={{
-              ...styles.statusDot,
-              backgroundColor:
-                status === 'connected'
-                  ? '#4ade80'
-                  : status === 'connecting' || status === 'reconnecting'
-                  ? '#facc15'
-                  : '#ef4444',
-            }}
-          />
-          {status}
+      <header className="header">
+        <h1 className="title">Claude Chat</h1>
+        <div className="header-right">
+          <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+            {theme === 'light' ? <MoonIcon className="theme-icon" /> : <SunIcon className="theme-icon" />}
+          </button>
+          <div className="status">
+            <span
+              className="status-dot"
+              style={{
+                backgroundColor:
+                  status === 'connected'
+                    ? 'var(--color-success)'
+                    : status === 'connecting' || status === 'reconnecting'
+                    ? 'var(--color-warning)'
+                    : 'var(--color-error)',
+              }}
+            />
+            {status}
+          </div>
         </div>
       </header>
 
       {/* Sidebar - Todos */}
       {todos && todos.length > 0 && (
-        <aside style={styles.sidebar}>
-          <h3 style={styles.sidebarTitle}>Tasks</h3>
+        <aside className="sidebar">
+          <h3 className="sidebar-title">Tasks</h3>
           {todos.map((todo, i) => (
             <TodoItemView key={i} todo={todo} />
           ))}
@@ -118,8 +180,8 @@ export default function App() {
       )}
 
       {/* Messages */}
-      <main style={styles.main}>
-        <div style={styles.messages}>
+      <main className="main">
+        <div className="messages">
           {messages.map((msg) => (
             <MessageView key={msg.id} message={msg} isStreaming={msg.isStreaming} />
           ))}
@@ -128,10 +190,10 @@ export default function App() {
         </div>
 
         {/* Error */}
-        {error && <div style={styles.error}>{error}</div>}
+        {error && <div className="error">{error}</div>}
 
         {/* Input */}
-        <form onSubmit={handleSubmit} style={styles.inputForm}>
+        <form onSubmit={handleSubmit} className="input-form">
           <input
             type="text"
             value={input}
@@ -144,17 +206,17 @@ export default function App() {
                 : 'Type a message...'
             }
             disabled={status !== 'connected'}
-            style={styles.input}
+            className="input"
           />
           {isStreaming ? (
-            <button type="button" onClick={cancel} style={styles.cancelButton}>
+            <button type="button" onClick={cancel} className="cancel-button">
               Cancel
             </button>
           ) : (
             <button
               type="submit"
               disabled={status !== 'connected' || !input.trim()}
-              style={styles.sendButton}
+              className="send-button"
             >
               Send
             </button>
@@ -171,9 +233,9 @@ function MessageView({ message, isStreaming }: { message: ChatMessage; isStreami
   // User messages - simple render
   if (isUser) {
     return (
-      <div style={{ ...styles.message, ...styles.userMessage }}>
-        <div style={styles.messageRole}>You</div>
-        <div style={styles.messageContent}>{message.content}</div>
+      <div className="message user-message">
+        <div className="message-role">You</div>
+        <div className="message-content">{message.content}</div>
       </div>
     );
   }
@@ -183,8 +245,8 @@ function MessageView({ message, isStreaming }: { message: ChatMessage; isStreami
 
   if (hasContentBlocks) {
     return (
-      <div style={styles.assistantWrapper}>
-        <div style={styles.messageRole}>Claude</div>
+      <div className="assistant-wrapper">
+        <div className="message-role">Claude</div>
         {message.contentBlocks!.map((block, idx) => (
           <ContentBlockView
             key={idx}
@@ -193,7 +255,7 @@ function MessageView({ message, isStreaming }: { message: ChatMessage; isStreami
             isStreaming={isStreaming}
           />
         ))}
-        {isStreaming && <span style={styles.cursor}>▋</span>}
+        {isStreaming && <span className="cursor">▋</span>}
       </div>
     );
   }
@@ -206,8 +268,8 @@ function MessageView({ message, isStreaming }: { message: ChatMessage; isStreami
   return (
     <>
       {hasTools && (
-        <div style={styles.toolGroupWrapper}>
-          <div style={styles.messageRole}>Claude</div>
+        <div className="tool-group-wrapper">
+          <div className="message-role">Claude</div>
           <ToolGroupView
             tools={completedTools}
             activeTools={activeTools}
@@ -216,11 +278,11 @@ function MessageView({ message, isStreaming }: { message: ChatMessage; isStreami
       )}
 
       {(message.content || (isStreaming && !hasTools)) && (
-        <div style={{ ...styles.message, ...styles.assistantMessage }}>
-          {!hasTools && <div style={styles.messageRole}>Claude</div>}
-          <div style={styles.messageContent} className="streamdown-content">
+        <div className="message assistant-message">
+          {!hasTools && <div className="message-role">Claude</div>}
+          <div className="message-content streamdown-content">
             <Streamdown>{message.content || '...'}</Streamdown>
-            {isStreaming && message.content && <span style={styles.cursor}>▋</span>}
+            {isStreaming && message.content && <span className="cursor">▋</span>}
           </div>
         </div>
       )}
@@ -239,19 +301,18 @@ function ContentBlockView({
 }) {
   if (block.type === 'text') {
     return (
-      <div style={styles.contentBlockText} className="streamdown-content">
+      <div className="content-block-text streamdown-content">
         <Streamdown>{block.content}</Streamdown>
       </div>
     );
   }
 
   if (block.type === 'tool_group') {
-    // Separate active vs completed tools within this group
     const activeTools = block.tools.filter(t => t.duration === undefined);
     const completedTools = block.tools.filter(t => t.duration !== undefined);
 
     return (
-      <div style={styles.contentBlockTools}>
+      <div className="content-block-tools">
         <ToolGroupView tools={completedTools} activeTools={activeTools} />
       </div>
     );
@@ -267,15 +328,11 @@ function ToolGroupView({
   tools: ToolUseData[];
   activeTools: ToolUseData[];
 }) {
-  // Default to expanded (like Andy's UI)
   const [isExpanded, setIsExpanded] = useState(true);
 
-  // Combine and sort by startTime to maintain chronological order
-  // Active tools first (still running), then completed tools
   const allTools = [...activeTools, ...tools];
   if (allTools.length === 0) return null;
 
-  // Sort by startTime if available, otherwise maintain original order
   allTools.sort((a, b) => {
     const aStart = a.startTime || 0;
     const bStart = b.startTime || 0;
@@ -291,20 +348,19 @@ function ToolGroupView({
     : `Used ${totalCount} tool${totalCount !== 1 ? 's' : ''}`;
 
   return (
-    <div style={styles.toolGroup}>
-      {/* Collapsed summary - clickable to expand */}
+    <div className="tool-group">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        style={styles.toolGroupHeader}
+        className="tool-group-header"
       >
         <ChevronIcon
           className="tool-chevron"
           direction={isExpanded ? 'down' : 'right'}
         />
-        <span style={styles.toolGroupTitle}>
+        <span className="tool-group-title">
           {headerText}
           {errorCount > 0 && (
-            <span style={styles.errorCount}> ({errorCount} failed)</span>
+            <span className="error-count"> ({errorCount} failed)</span>
           )}
         </span>
         {hasActive ? (
@@ -314,9 +370,8 @@ function ToolGroupView({
         )}
       </button>
 
-      {/* Expanded tool list */}
       {isExpanded && (
-        <div style={styles.toolGroupContent}>
+        <div className="tool-group-content">
           {allTools.map((tool) => (
             <ToolItemView
               key={tool.id}
@@ -340,13 +395,12 @@ function ToolItemView({ tool, isActive }: { tool: ToolUseData; isActive: boolean
   const hasMoreLines = lineCount > previewLimit;
 
   return (
-    <div style={styles.toolItem}>
+    <div className="tool-item">
       <div
-        style={styles.toolItemHeader}
+        className="tool-item-header"
         onClick={() => hasSummary && setShowSummary(!showSummary)}
       >
-        {/* Status icon */}
-        <div style={styles.toolItemIcon}>
+        <div className="tool-item-icon">
           {isActive ? (
             <LoaderIcon className="tool-spinner-small" />
           ) : tool.error ? (
@@ -356,30 +410,24 @@ function ToolItemView({ tool, isActive }: { tool: ToolUseData; isActive: boolean
           )}
         </div>
 
-        {/* Tool name and details */}
-        <div style={styles.toolItemContent}>
-          <div style={styles.toolItemNameRow}>
-            <span style={{
-              ...styles.toolItemName,
-              color: isActive ? '#eee' : '#888',
-            }}>
+        <div className="tool-item-content">
+          <div className="tool-item-name-row">
+            <span className={`tool-item-name ${isActive ? 'active' : ''}`}>
               {tool.friendly || tool.name}
             </span>
             {tool.duration && tool.duration > 0 && (
-              <span style={styles.toolItemDuration}>
+              <span className="tool-item-duration">
                 {formatDuration(tool.duration)}
               </span>
             )}
           </div>
-          {/* Input detail (file path, command, etc.) */}
           {tool.inputDetail && (
-            <div style={styles.toolInputDetail}>
+            <div className="tool-input-detail">
               {tool.inputDetail}
             </div>
           )}
         </div>
 
-        {/* Only show chevron if there's more content than the preview shows */}
         {hasSummary && hasMoreLines && (
           <ChevronIcon
             className="tool-summary-chevron"
@@ -388,35 +436,27 @@ function ToolItemView({ tool, isActive }: { tool: ToolUseData; isActive: boolean
         )}
       </div>
 
-      {/* Summary preview */}
       {hasSummary && !showSummary && !isActive && (
         <div
-          style={styles.summaryPreview}
+          className="summary-preview"
           onClick={() => setShowSummary(true)}
         >
           {summaryLines.slice(0, previewLimit).map((line, i) => (
-            <div key={i} style={{
-              ...styles.summaryLine,
-              color: tool.error ? 'rgba(239, 68, 68, 0.8)' : 'rgba(74, 222, 128, 0.8)',
-            }}>
+            <div key={i} className={`summary-line ${tool.error ? 'error' : 'success'}`}>
               {line || '\u00A0'}
             </div>
           ))}
           {hasMoreLines && (
-            <div style={styles.summaryMore}>
+            <div className="summary-more">
               +{lineCount - previewLimit} more lines
             </div>
           )}
         </div>
       )}
 
-      {/* Expanded summary */}
       {showSummary && tool.summary && (
-        <div style={styles.toolSummary}>
-          <pre style={{
-            ...styles.summaryText,
-            color: tool.error ? 'rgba(239, 68, 68, 0.8)' : 'rgba(74, 222, 128, 0.8)',
-          }}>
+        <div className="tool-summary">
+          <pre className={`summary-text ${tool.error ? 'error' : 'success'}`}>
             {tool.summary}
           </pre>
         </div>
@@ -427,20 +467,14 @@ function ToolItemView({ tool, isActive }: { tool: ToolUseData; isActive: boolean
 
 function TodoItemView({ todo }: { todo: TodoItem }) {
   return (
-    <div
-      style={{
-        ...styles.todoItem,
-        ...(todo.status === 'completed' ? styles.todoCompleted : {}),
-        ...(todo.status === 'in_progress' ? styles.todoActive : {}),
-      }}
-    >
-      <div style={styles.todoIcon}>
+    <div className={`todo-item ${todo.status}`}>
+      <div className="todo-icon">
         {todo.status === 'completed' ? (
           <CheckIcon className="todo-check" />
         ) : todo.status === 'in_progress' ? (
           <LoaderIcon className="todo-spinner" />
         ) : (
-          <span style={styles.todoPending}>○</span>
+          <span className="todo-pending">○</span>
         )}
       </div>
       <span>
@@ -451,280 +485,3 @@ function TodoItemView({ todo }: { todo: TodoItem }) {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    maxWidth: '900px',
-    margin: '0 auto',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 24px',
-    borderBottom: '1px solid #333',
-  },
-  title: {
-    fontSize: '20px',
-    fontWeight: 600,
-  },
-  status: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontSize: '14px',
-    color: '#888',
-  },
-  statusDot: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-  },
-  sidebar: {
-    padding: '16px 24px',
-    borderBottom: '1px solid #333',
-    background: '#16162a',
-  },
-  sidebarTitle: {
-    fontSize: '14px',
-    fontWeight: 600,
-    marginBottom: '12px',
-    color: '#888',
-  },
-  main: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-  },
-  messages: {
-    flex: 1,
-    overflow: 'auto',
-    padding: '24px',
-  },
-  message: {
-    marginBottom: '16px',
-    padding: '16px',
-    borderRadius: '16px',
-  },
-  toolGroupWrapper: {
-    marginBottom: '8px',
-    marginRight: '40px',
-  },
-  userMessage: {
-    background: 'rgba(99, 102, 241, 0.15)',
-    marginLeft: '40px',
-    borderTopRightRadius: '4px',
-  },
-  assistantMessage: {
-    background: '#1e1e36',
-    marginRight: '40px',
-    borderTopLeftRadius: '4px',
-  },
-  messageRole: {
-    fontSize: '12px',
-    fontWeight: 600,
-    color: '#888',
-    marginBottom: '8px',
-  },
-  messageContent: {
-    fontSize: '15px',
-    lineHeight: 1.6,
-    whiteSpace: 'pre-wrap',
-  },
-  cursor: {
-    opacity: 0.7,
-    animation: 'pulse 1s ease-in-out infinite',
-  },
-  toolGroup: {
-    marginTop: '12px',
-    background: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    overflow: 'hidden',
-  },
-  toolGroupHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    width: '100%',
-    padding: '10px 12px',
-    background: 'transparent',
-    border: 'none',
-    color: '#888',
-    fontSize: '12px',
-    cursor: 'pointer',
-    textAlign: 'left' as const,
-  },
-  toolGroupTitle: {
-    flex: 1,
-  },
-  errorCount: {
-    color: '#ef4444',
-  },
-  toolGroupContent: {
-    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-    padding: '8px 12px',
-  },
-  toolItem: {
-    padding: '6px 0',
-  },
-  toolItemHeader: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: '8px',
-    cursor: 'pointer',
-  },
-  toolItemIcon: {
-    width: '16px',
-    height: '16px',
-    marginTop: '2px',
-    flexShrink: 0,
-  },
-  toolItemContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-  toolItemNameRow: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: '8px',
-    flexWrap: 'wrap' as const,
-  },
-  toolItemName: {
-    fontSize: '12px',
-    fontWeight: 500,
-  },
-  toolItemDuration: {
-    fontSize: '10px',
-    color: 'rgba(136, 136, 136, 0.5)',
-  },
-  toolInputDetail: {
-    fontSize: '11px',
-    color: 'rgba(136, 136, 136, 0.7)',
-    marginTop: '2px',
-    whiteSpace: 'pre' as const,
-    overflow: 'auto',
-  },
-  summaryPreview: {
-    marginTop: '6px',
-    marginLeft: '24px',
-    padding: '6px 8px',
-    background: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '10px',
-    fontFamily: 'monospace',
-  },
-  summaryLine: {
-    whiteSpace: 'pre' as const,
-    lineHeight: 1.4,
-  },
-  summaryMore: {
-    marginTop: '4px',
-    fontSize: '9px',
-    color: 'rgba(136, 136, 136, 0.5)',
-  },
-  toolSummary: {
-    marginTop: '8px',
-    marginLeft: '24px',
-  },
-  summaryText: {
-    margin: 0,
-    padding: '10px',
-    background: 'rgba(0, 0, 0, 0.3)',
-    borderRadius: '6px',
-    fontSize: '11px',
-    fontFamily: 'monospace',
-    whiteSpace: 'pre-wrap' as const,
-    wordBreak: 'break-word' as const,
-    maxHeight: '200px',
-    overflow: 'auto',
-    lineHeight: 1.5,
-  },
-  todoItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '8px 0',
-    fontSize: '14px',
-    color: '#888',
-  },
-  todoCompleted: {
-    color: '#4ade80',
-    textDecoration: 'line-through',
-  },
-  todoActive: {
-    color: '#facc15',
-  },
-  todoIcon: {
-    width: '16px',
-    height: '16px',
-  },
-  todoPending: {
-    fontSize: '14px',
-    lineHeight: 1,
-  },
-  error: {
-    margin: '0 24px 16px',
-    padding: '12px 16px',
-    background: '#4a2d2d',
-    borderRadius: '8px',
-    color: '#f87171',
-    fontSize: '14px',
-  },
-  inputForm: {
-    display: 'flex',
-    gap: '12px',
-    padding: '16px 24px',
-    borderTop: '1px solid #333',
-  },
-  input: {
-    flex: 1,
-    padding: '12px 16px',
-    borderRadius: '8px',
-    border: '1px solid #333',
-    background: '#16162a',
-    color: '#eee',
-    fontSize: '15px',
-    outline: 'none',
-  },
-  sendButton: {
-    padding: '12px 24px',
-    borderRadius: '8px',
-    border: 'none',
-    background: '#6366f1',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: 500,
-    cursor: 'pointer',
-  },
-  cancelButton: {
-    padding: '12px 24px',
-    borderRadius: '8px',
-    border: 'none',
-    background: '#ef4444',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: 500,
-    cursor: 'pointer',
-  },
-  assistantWrapper: {
-    marginBottom: '16px',
-    marginRight: '40px',
-  },
-  contentBlockText: {
-    padding: '12px 16px',
-    background: '#1e1e36',
-    borderRadius: '12px',
-    marginBottom: '8px',
-    fontSize: '15px',
-    lineHeight: 1.6,
-  },
-  contentBlockTools: {
-    marginBottom: '8px',
-  },
-};
