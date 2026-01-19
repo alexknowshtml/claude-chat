@@ -75,14 +75,23 @@ export default function App() {
             <MessageView key={msg.id} message={msg} />
           ))}
 
-          {/* Active tools */}
-          {activeTools.length > 0 && (
-            <div style={styles.activeToolsContainer}>
-              <ToolGroupView
-                tools={[]}
-                activeTools={activeTools}
-                isStreaming={isStreaming}
-              />
+          {/* Streaming response with active tools inline */}
+          {isStreaming && (activeTools.length > 0 || streamingContent) && (
+            <div style={{ ...styles.message, ...styles.assistantMessage }}>
+              <div style={styles.messageRole}>Claude</div>
+              {activeTools.length > 0 && (
+                <ToolGroupView
+                  tools={[]}
+                  activeTools={activeTools}
+                  isStreaming={true}
+                />
+              )}
+              {streamingContent && (
+                <div style={styles.messageContent}>{streamingContent}</div>
+              )}
+              {!streamingContent && activeTools.length > 0 && (
+                <div style={styles.messageContent}>...</div>
+              )}
             </div>
           )}
 
@@ -346,9 +355,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '15px',
     lineHeight: 1.6,
     whiteSpace: 'pre-wrap',
-  },
-  activeToolsContainer: {
-    marginBottom: '16px',
   },
   toolGroup: {
     marginTop: '12px',
