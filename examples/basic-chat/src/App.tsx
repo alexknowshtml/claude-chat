@@ -120,27 +120,8 @@ export default function App() {
       <main style={styles.main}>
         <div style={styles.messages}>
           {messages.map((msg) => (
-            <MessageView key={msg.id} message={msg} />
+            <MessageView key={msg.id} message={msg} isStreaming={msg.isStreaming} />
           ))}
-
-          {/* Active tools - separate bubble */}
-          {isStreaming && activeTools.length > 0 && (
-            <ToolGroupView
-              tools={[]}
-              activeTools={activeTools}
-            />
-          )}
-
-          {/* Streaming text */}
-          {isStreaming && streamingContent && (
-            <div style={{ ...styles.message, ...styles.assistantMessage }}>
-              <div style={styles.messageRole}>Claude</div>
-              <div style={styles.messageContent}>
-                {streamingContent}
-                <span style={styles.cursor}>▋</span>
-              </div>
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -183,8 +164,13 @@ export default function App() {
   );
 }
 
-function MessageView({ message }: { message: ChatMessage }) {
+function MessageView({ message, isStreaming }: { message: ChatMessage; isStreaming?: boolean }) {
   const isUser = message.role === 'user';
+
+  // Separate active vs completed tools
+  const activeTools = message.tools?.filter(t => !t.duration) || [];
+  const completedTools = message.tools?.filter(t => t.duration) || [];
+  const hasTools = (message.tools?.length || 0) > 0;
 
   return (
     <div
@@ -194,15 +180,19 @@ function MessageView({ message }: { message: ChatMessage }) {
       }}
     >
       <div style={styles.messageRole}>{isUser ? 'You' : 'Claude'}</div>
-      <div style={styles.messageContent}>
-        {message.content || (message.isStreaming && '...')}
-      </div>
-      {message.tools && message.tools.length > 0 && (
+
+      {/* Show tools before text content */}
+      {hasTools && (
         <ToolGroupView
-          tools={message.tools}
-          activeTools={[]}
+          tools={completedTools}
+          activeTools={activeTools}
         />
       )}
+
+      <div style={styles.messageContent}>
+        {message.content || (isStreaming && !hasTools && '...')}
+        {isStreaming && message.content && <span style={styles.cursor}>▋</span>}
+      </div>
     </div>
   );
 }
