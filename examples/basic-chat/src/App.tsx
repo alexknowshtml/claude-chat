@@ -168,9 +168,15 @@ function MessageView({ message, isStreaming }: { message: ChatMessage; isStreami
   const isUser = message.role === 'user';
 
   // Separate active vs completed tools
-  const activeTools = message.tools?.filter(t => !t.duration) || [];
-  const completedTools = message.tools?.filter(t => t.duration) || [];
+  // Active tools have no duration yet (undefined or 0)
+  const activeTools = message.tools?.filter(t => t.duration === undefined) || [];
+  const completedTools = message.tools?.filter(t => t.duration !== undefined) || [];
   const hasTools = (message.tools?.length || 0) > 0;
+
+  // Debug logging
+  if (hasTools) {
+    console.log('[MessageView] tools:', message.tools, 'active:', activeTools.length, 'completed:', completedTools.length);
+  }
 
   // For assistant messages, render tools as a separate element above the message bubble
   if (!isUser) {

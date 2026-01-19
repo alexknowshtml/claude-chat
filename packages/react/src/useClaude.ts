@@ -82,6 +82,9 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSeqRef = useRef(0);
   const currentAssistantMessageRef = useRef<string | null>(null);
+  // Use refs to avoid stale closures in handleMessage
+  const streamingContentRef = useRef('');
+  const completedToolsRef = useRef<ToolUseData[]>([]);
 
   /**
    * Handle incoming WebSocket message.
@@ -101,7 +104,11 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
         switch (payload.action) {
           case 'token':
             if (payload.content) {
-              setStreamingContent((prev) => prev + payload.content);
+              setStreamingContent((prev) => {
+                const newContent = prev + payload.content;
+                streamingContentRef.current = newContent;
+                return newContent;
+              });
             }
             break;
 
@@ -117,7 +124,11 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
               setActiveTools((prev) =>
                 prev.filter((t) => t.id !== payload.tool!.id)
               );
-              setCompletedTools((prev) => [...prev, payload.tool!]);
+              setCompletedTools((prev) => {
+                const newTools = [...prev, payload.tool!];
+                completedToolsRef.current = newTools;
+                return newTools;
+              });
             }
             break;
 
@@ -134,6 +145,11 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
           case 'complete':
             // Finalize the assistant message
             setIsStreaming(false);
+
+            // Use refs to get current values (avoids stale closure)
+            const finalContent = streamingContentRef.current + (payload.content || '');
+            const finalTools = [...completedToolsRef.current];
+
             setMessages((prev) => {
               // Find and update the streaming message, or add new one
               const streamingIdx = prev.findIndex(
@@ -144,23 +160,23 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
                 const updated = [...prev];
                 updated[streamingIdx] = {
                   ...updated[streamingIdx],
-                  content: streamingContent + (payload.content || ''),
-                  tools: [...completedTools],
+                  content: finalContent,
+                  tools: finalTools,
                   isStreaming: false,
                 };
                 return updated;
               }
 
               // Add new message if not found
-              if (streamingContent || completedTools.length > 0) {
+              if (finalContent || finalTools.length > 0) {
                 return [
                   ...prev,
                   {
                     id: generateId(),
                     role: 'assistant' as const,
-                    content: streamingContent + (payload.content || ''),
+                    content: finalContent,
                     timestamp: Date.now(),
-                    tools: [...completedTools],
+                    tools: finalTools,
                     isStreaming: false,
                   },
                 ];
@@ -171,8 +187,10 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
 
             // Reset streaming state
             setStreamingContent('');
+            streamingContentRef.current = '';
             setActiveTools([]);
             setCompletedTools([]);
+            completedToolsRef.current = [];
             currentAssistantMessageRef.current = null;
             break;
 
@@ -183,8 +201,10 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
 
             // Reset streaming state
             setStreamingContent('');
+            streamingContentRef.current = '';
             setActiveTools([]);
             setCompletedTools([]);
+            completedToolsRef.current = [];
             currentAssistantMessageRef.current = null;
             break;
         }
@@ -237,7 +257,7 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
     } catch (err) {
       console.error('[useClaude] Failed to parse message:', err);
     }
-  }, [streamingContent, completedTools, onError]);
+  }, [onError]);
 
   /**
    * Connect to the WebSocket server.
@@ -346,8 +366,10 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
       // Prepare for streaming response
       setIsStreaming(true);
       setStreamingContent('');
+      streamingContentRef.current = '';
       setActiveTools([]);
       setCompletedTools([]);
+      completedToolsRef.current = [];
       setError(null);
 
       // Create placeholder assistant message
