@@ -314,14 +314,13 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
       reconnectTimeoutRef.current = null;
     }
 
-    reconnectAttemptsRef.current = maxReconnectAttempts; // Prevent auto-reconnect
-
-    if (wsRef.current) {
+    // Only close if we're actually connected or connecting
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      reconnectAttemptsRef.current = maxReconnectAttempts; // Prevent auto-reconnect
       wsRef.current.close();
       wsRef.current = null;
+      setStatus('disconnected');
     }
-
-    setStatus('disconnected');
   }, [maxReconnectAttempts]);
 
   /**
@@ -414,16 +413,15 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
     setError(null);
   }, []);
 
-  // Auto-connect on mount
+  // Auto-connect on mount (only run once)
+  // Note: We don't disconnect on unmount because React StrictMode double-mounts
+  // and would immediately disconnect the connection we just made
   useEffect(() => {
-    if (autoConnect) {
+    if (autoConnect && !wsRef.current) {
       connect();
     }
-
-    return () => {
-      disconnect();
-    };
-  }, [autoConnect, connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Update streaming message content in real-time
   useEffect(() => {

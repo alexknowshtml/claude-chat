@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useClaude } from '@anthropic/claude-chat-react';
 import type { ChatMessage, ToolUseData, TodoItem } from '@anthropic/claude-chat-react';
 
-const WS_URL = 'ws://localhost:3000/ws';
+const WS_URL = 'ws://100.85.122.99:3456/ws';
 
 export default function App() {
   const [input, setInput] = useState('');
