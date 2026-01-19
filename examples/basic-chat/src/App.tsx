@@ -77,10 +77,12 @@ export default function App() {
 
           {/* Active tools */}
           {activeTools.length > 0 && (
-            <div style={styles.activeTools}>
-              {activeTools.map((tool) => (
-                <ToolView key={tool.id} tool={tool} active />
-              ))}
+            <div style={styles.activeToolsContainer}>
+              <ToolGroupView
+                tools={[]}
+                activeTools={activeTools}
+                isStreaming={isStreaming}
+              />
             </div>
           )}
 
@@ -140,9 +142,63 @@ function MessageView({ message }: { message: ChatMessage }) {
         {message.content || (message.isStreaming && '...')}
       </div>
       {message.tools && message.tools.length > 0 && (
-        <div style={styles.messageTools}>
-          {message.tools.map((tool) => (
-            <ToolView key={tool.id} tool={tool} />
+        <ToolGroupView
+          tools={message.tools}
+          activeTools={[]}
+          isStreaming={false}
+        />
+      )}
+    </div>
+  );
+}
+
+function ToolGroupView({
+  tools,
+  activeTools,
+  isStreaming
+}: {
+  tools: ToolUseData[];
+  activeTools: ToolUseData[];
+  isStreaming: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const allTools = [...tools, ...activeTools];
+  if (allTools.length === 0) return null;
+
+  const hasActive = activeTools.length > 0;
+  const completedCount = tools.length;
+  const activeCount = activeTools.length;
+
+  const headerText = hasActive
+    ? `Using ${activeCount + completedCount} tool${activeCount + completedCount !== 1 ? 's' : ''}...`
+    : `Used ${completedCount} tool${completedCount !== 1 ? 's' : ''}`;
+
+  return (
+    <div style={styles.toolGroup}>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={styles.toolGroupHeader}
+      >
+        <span style={styles.toolGroupIcon}>
+          {hasActive ? (
+            <span style={styles.spinner}>⟳</span>
+          ) : (
+            <span style={styles.checkIcon}>✓</span>
+          )}
+        </span>
+        <span style={styles.toolGroupTitle}>{headerText}</span>
+        <span style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</span>
+      </button>
+
+      {isExpanded && (
+        <div style={styles.toolGroupContent}>
+          {allTools.map((tool) => (
+            <ToolItemView
+              key={tool.id}
+              tool={tool}
+              isActive={activeTools.some(t => t.id === tool.id)}
+            />
           ))}
         </div>
       )}
@@ -150,19 +206,39 @@ function MessageView({ message }: { message: ChatMessage }) {
   );
 }
 
-function ToolView({ tool, active }: { tool: ToolUseData; active?: boolean }) {
+function ToolItemView({ tool, isActive }: { tool: ToolUseData; isActive: boolean }) {
+  const [showSummary, setShowSummary] = useState(false);
+
+  const hasSummary = tool.summary && tool.summary.length > 0;
+
   return (
-    <div
-      style={{
-        ...styles.tool,
-        ...(active ? styles.activeTool : {}),
-        ...(tool.error ? styles.errorTool : {}),
-      }}
-    >
-      <span style={styles.toolIcon}>{active ? '⏳' : tool.error ? '❌' : '✓'}</span>
-      <span style={styles.toolName}>{tool.friendly || tool.name}</span>
-      {tool.duration && (
-        <span style={styles.toolDuration}>{tool.duration}ms</span>
+    <div style={styles.toolItem}>
+      <div
+        style={styles.toolItemHeader}
+        onClick={() => hasSummary && setShowSummary(!showSummary)}
+      >
+        <span style={styles.toolItemIcon}>
+          {isActive ? (
+            <span style={styles.spinnerSmall}>⟳</span>
+          ) : tool.error ? (
+            <span style={styles.errorIcon}>✗</span>
+          ) : (
+            <span style={styles.successIcon}>✓</span>
+          )}
+        </span>
+        <span style={styles.toolItemName}>{tool.friendly || tool.name}</span>
+        {tool.duration && (
+          <span style={styles.toolItemDuration}>{tool.duration}ms</span>
+        )}
+        {hasSummary && (
+          <span style={styles.summaryToggle}>{showSummary ? '▼' : '▶'}</span>
+        )}
+      </div>
+
+      {showSummary && tool.summary && (
+        <div style={styles.toolSummary}>
+          <pre style={styles.summaryText}>{tool.summary}</pre>
+        </div>
       )}
     </div>
   );
@@ -271,45 +347,112 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
     whiteSpace: 'pre-wrap',
   },
-  messageTools: {
+  activeToolsContainer: {
+    marginBottom: '16px',
+  },
+  toolGroup: {
     marginTop: '12px',
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '8px',
-  },
-  activeTools: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '8px',
-    padding: '16px',
     background: '#16162a',
-    borderRadius: '12px',
+    borderRadius: '8px',
+    overflow: 'hidden',
   },
-  tool: {
+  toolGroupHeader: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '6px 12px',
-    borderRadius: '6px',
-    background: '#2d2d4a',
+    gap: '8px',
+    width: '100%',
+    padding: '10px 12px',
+    background: 'transparent',
+    border: 'none',
+    color: '#ccc',
     fontSize: '13px',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
   },
-  activeTool: {
-    background: '#3d3d6a',
-    animation: 'pulse 2s infinite',
+  toolGroupIcon: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '18px',
+    height: '18px',
   },
-  errorTool: {
-    background: '#4a2d2d',
+  toolGroupTitle: {
+    flex: 1,
+    fontWeight: 500,
   },
-  toolIcon: {
+  expandIcon: {
+    fontSize: '10px',
+    color: '#666',
+  },
+  toolGroupContent: {
+    borderTop: '1px solid #333',
+    padding: '8px 0',
+  },
+  toolItem: {
+    padding: '0 12px',
+  },
+  toolItemHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 0',
+    cursor: 'pointer',
+  },
+  toolItemIcon: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '16px',
+    height: '16px',
     fontSize: '12px',
   },
-  toolName: {
-    color: '#ccc',
+  toolItemName: {
+    flex: 1,
+    fontSize: '13px',
+    color: '#aaa',
   },
-  toolDuration: {
-    color: '#666',
+  toolItemDuration: {
     fontSize: '11px',
+    color: '#666',
+  },
+  summaryToggle: {
+    fontSize: '10px',
+    color: '#666',
+  },
+  toolSummary: {
+    padding: '8px 0 8px 24px',
+  },
+  summaryText: {
+    margin: 0,
+    padding: '8px',
+    background: '#0d0d1a',
+    borderRadius: '4px',
+    fontSize: '12px',
+    color: '#888',
+    whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-word' as const,
+    maxHeight: '150px',
+    overflow: 'auto',
+  },
+  spinner: {
+    display: 'inline-block',
+    animation: 'spin 1s linear infinite',
+    color: '#facc15',
+  },
+  spinnerSmall: {
+    display: 'inline-block',
+    animation: 'spin 1s linear infinite',
+    color: '#facc15',
+    fontSize: '12px',
+  },
+  checkIcon: {
+    color: '#4ade80',
+  },
+  successIcon: {
+    color: '#4ade80',
+  },
+  errorIcon: {
+    color: '#ef4444',
   },
   todoItem: {
     display: 'flex',

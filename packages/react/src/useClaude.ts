@@ -107,6 +107,7 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
 
           case 'tool_start':
             if (payload.tool) {
+              console.log('[useClaude] tool_start:', payload.tool);
               setActiveTools((prev) => [...prev, payload.tool!]);
             }
             break;
