@@ -10,6 +10,7 @@ export type {
   UseClaudeReturn,
   ConnectionStatus,
   ChatMessage,
+  ContentBlock,
   ToolUseData,
   TodoItem,
   WebSocketMessage,

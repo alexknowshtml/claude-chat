@@ -773,7 +773,7 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
         if (!wsRef.current) {
           connect();
         }
-      }, 100);
+      }, 300);
       return () => clearTimeout(timeoutId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

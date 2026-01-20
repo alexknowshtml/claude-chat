@@ -74,20 +74,13 @@ export const chatStateSchema = z.object({
   errorMessage: z.string().optional(),
 });
 
-// WebSocketMessage schema for events array (forward reference handled via lazy)
-const webSocketMessageBaseSchema = z.object({
-  type: z.enum(['chat', 'system']),
-  seq: z.number(),
-  timestamp: z.number(),
-  sessionId: z.string().optional(),
-});
-
 export const systemPayloadSchema = z.object({
   action: systemActionSchema,
   sessionId: z.string().optional(),
   lastSeq: z.number().optional(),
   currentSeq: z.number().optional(),
-  events: z.array(z.lazy(() => webSocketMessageSchema)).optional(),
+  // events is an array of WebSocketMessages but we skip deep validation to avoid circular refs
+  events: z.array(z.unknown()).optional(),
   chatState: chatStateSchema.optional(),
   error: z.string().optional(),
 });
@@ -96,7 +89,11 @@ export const systemPayloadSchema = z.object({
 // WebSocket Message Schema
 // =============================================================================
 
-export const webSocketMessageSchema = webSocketMessageBaseSchema.extend({
+export const webSocketMessageSchema = z.object({
+  type: z.enum(['chat', 'system']),
+  seq: z.number(),
+  timestamp: z.number(),
+  sessionId: z.string().optional(),
   payload: z.union([chatPayloadSchema, systemPayloadSchema, z.unknown()]),
 });
 
