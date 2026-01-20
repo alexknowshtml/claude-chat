@@ -25,17 +25,11 @@ This project wraps the [Claude Code CLI](https://docs.anthropic.com/en/docs/clau
 ## How It Works
 
 ```
-┌─────────────────┐     WebSocket      ┌─────────────────┐
-│   React App     │ ◄────────────────► │   Bun Server    │
-│   useClaude()   │    (port 3457)     │                 │
-└─────────────────┘                    └────────┬────────┘
-                                                │
-                                                │ Bun.spawn()
-                                                ▼
-                                       ┌─────────────────┐
-                                       │   Claude CLI    │
-                                       │  stream-json    │
-                                       └─────────────────┘
+React App ◄──WebSocket──► Bun Server
+                              │
+                         Bun.spawn()
+                              ▼
+                         Claude CLI
 ```
 
 The server spawns Claude CLI with `--output-format stream-json` and parses the streaming output, broadcasting events to connected WebSocket clients.
@@ -119,6 +113,27 @@ To access CC Chat Kit from your phone or other devices, we recommend [Tailscale]
 ```typescript
 const WS_URL = 'ws://100.x.x.x:3457/ws';  // Your Tailscale IP
 ```
+
+---
+
+## Install as a PWA (Recommended)
+
+For the best mobile experience, install CC Chat Kit as a Progressive Web App. This gives you:
+- Full-screen app experience (no browser chrome)
+- Home screen icon
+- Faster loading
+- Works offline for cached content
+
+**On iOS (Safari):**
+1. Open your CC Chat Kit URL in Safari
+2. Tap the Share button (square with arrow)
+3. Scroll down and tap "Add to Home Screen"
+4. Tap "Add"
+
+**On Android (Chrome):**
+1. Open your CC Chat Kit URL in Chrome
+2. Tap the three-dot menu
+3. Tap "Add to Home Screen" or "Install app"
 
 ---
 
