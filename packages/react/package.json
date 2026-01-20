@@ -38,5 +38,8 @@
     "hooks",
     "chat",
     "cc-chat-kit"
-  ]
+  ],
+  "dependencies": {
+    "zod": "^4.3.5"
+  }
 }

@@ -17,3 +17,15 @@ export type {
   SystemPayload,
   ChatState,
 } from './types';
+
+// Optional: export schemas for users who want runtime validation
+export {
+  chatPayloadSchema,
+  systemPayloadSchema,
+  webSocketMessageSchema,
+  toolUseDataSchema,
+  todoItemSchema,
+  validateChatPayload,
+  validateSystemPayload,
+  validateWebSocketMessage,
+} from './schemas';
