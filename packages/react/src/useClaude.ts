@@ -766,9 +766,15 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
   // Auto-connect on mount (only run once)
   // Note: We don't disconnect on unmount because React StrictMode double-mounts
   // and would immediately disconnect the connection we just made
+  // Small delay helps with iOS Safari race condition on first load
   useEffect(() => {
     if (autoConnect && !wsRef.current) {
-      connect();
+      const timeoutId = setTimeout(() => {
+        if (!wsRef.current) {
+          connect();
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
