@@ -48,6 +48,204 @@ import {
 } from './schemas';
 
 // =============================================================================
+// Module-level WebSocket Singleton (survives React StrictMode remounts)
+// Pattern ported from Andy Core's useWebSocketConnection.ts
+// =============================================================================
+
+const RECONNECT_DELAY = 2000;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
+// Singleton WebSocket state per URL
+interface SharedWebSocketState {
+  ws: WebSocket | null;
+  connecting: boolean;
+  reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  reconnectAttempts: number;
+  subscribedSession: string | null;
+  // Listener Sets - all hook instances register their handlers here
+  messageListeners: Set<(event: MessageEvent) => void>;
+  connectionListeners: Set<(connected: boolean, reconnecting: boolean) => void>;
+  openListeners: Set<() => void>;
+}
+
+// Track shared state per URL
+const sharedStates = new Map<string, SharedWebSocketState>();
+
+/**
+ * Get or create shared state for a URL.
+ */
+function getSharedState(url: string): SharedWebSocketState {
+  let state = sharedStates.get(url);
+  if (!state) {
+    state = {
+      ws: null,
+      connecting: false,
+      reconnectTimeout: null,
+      reconnectAttempts: 0,
+      subscribedSession: null,
+      messageListeners: new Set(),
+      connectionListeners: new Set(),
+      openListeners: new Set(),
+    };
+    sharedStates.set(url, state);
+  }
+  return state;
+}
+
+/**
+ * Create the shared WebSocket connection (called by first hook that needs it).
+ */
+function createSharedWebSocket(url: string, onConnect?: () => void): void {
+  const state = getSharedState(url);
+
+  // Already open
+  if (state.ws?.readyState === WebSocket.OPEN) {
+    console.log('[WS] Shared connection already open');
+    onConnect?.();
+    return;
+  }
+  // Already connecting
+  if (state.ws?.readyState === WebSocket.CONNECTING) {
+    console.log('[WS] Shared connection already connecting');
+    if (onConnect) {
+      state.openListeners.add(onConnect);
+    }
+    return;
+  }
+  // Connection in progress (flag)
+  if (state.connecting) {
+    console.log('[WS] Shared connection in progress (flag)');
+    if (onConnect) {
+      state.openListeners.add(onConnect);
+    }
+    return;
+  }
+
+  state.connecting = true;
+  if (onConnect) {
+    state.openListeners.add(onConnect);
+  }
+  console.log('[WS] Creating shared connection to:', url);
+
+  const ws = new WebSocket(url);
+  state.ws = ws;
+
+  ws.onopen = () => {
+    console.log('[WS] Shared connection opened');
+    state.connecting = false;
+    state.reconnectAttempts = 0;
+    // Notify all connection listeners
+    state.connectionListeners.forEach(listener => listener(true, false));
+    // Call and clear open listeners
+    state.openListeners.forEach(listener => listener());
+    state.openListeners.clear();
+  };
+
+  ws.onmessage = (event) => {
+    // Broadcast to all registered message listeners
+    state.messageListeners.forEach(listener => listener(event));
+  };
+
+  ws.onerror = (error) => {
+    console.error('[WS] Shared connection error:', error);
+    state.connecting = false;
+  };
+
+  ws.onclose = () => {
+    console.log('[WS] Shared connection closed');
+    state.ws = null;
+    state.connecting = false;
+    state.subscribedSession = null;
+
+    // Notify all connection listeners
+    const isReconnecting = state.reconnectAttempts < MAX_RECONNECT_ATTEMPTS;
+    state.connectionListeners.forEach(listener => listener(false, isReconnecting));
+
+    // Schedule reconnect if there are still listeners
+    if (state.messageListeners.size > 0 && state.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      state.reconnectAttempts++;
+      const delay = RECONNECT_DELAY * Math.min(state.reconnectAttempts, 5);
+      console.log(`[WS] Scheduling shared reconnect in ${delay}ms (attempt ${state.reconnectAttempts})`);
+
+      state.reconnectTimeout = setTimeout(() => {
+        state.reconnectTimeout = null;
+        if (state.messageListeners.size > 0) {
+          createSharedWebSocket(url);
+        }
+      }, delay);
+    }
+  };
+}
+
+/**
+ * Close the shared WebSocket connection for a URL.
+ */
+function closeSharedWebSocket(url: string): void {
+  const state = sharedStates.get(url);
+  if (!state) return;
+
+  if (state.reconnectTimeout) {
+    clearTimeout(state.reconnectTimeout);
+    state.reconnectTimeout = null;
+  }
+  if (state.ws) {
+    state.ws.close();
+    state.ws = null;
+  }
+  state.connecting = false;
+  state.reconnectAttempts = 0;
+  state.subscribedSession = null;
+}
+
+/**
+ * Register a message listener for a URL.
+ * Returns a cleanup function to unregister.
+ */
+function registerMessageListener(url: string, listener: (event: MessageEvent) => void): () => void {
+  const state = getSharedState(url);
+  state.messageListeners.add(listener);
+  return () => {
+    state.messageListeners.delete(listener);
+    // If no more listeners, close the connection
+    if (state.messageListeners.size === 0) {
+      closeSharedWebSocket(url);
+    }
+  };
+}
+
+/**
+ * Register a connection status listener for a URL.
+ * Returns a cleanup function to unregister.
+ */
+function registerConnectionListener(url: string, listener: (connected: boolean, reconnecting: boolean) => void): () => void {
+  const state = getSharedState(url);
+  state.connectionListeners.add(listener);
+  return () => {
+    state.connectionListeners.delete(listener);
+  };
+}
+
+/**
+ * Send a message via the shared WebSocket.
+ */
+function sendViaSharedWebSocket(url: string, data: string): boolean {
+  const state = sharedStates.get(url);
+  if (state?.ws?.readyState === WebSocket.OPEN) {
+    state.ws.send(data);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if shared WebSocket is connected.
+ */
+function isSharedWebSocketConnected(url: string): boolean {
+  const state = sharedStates.get(url);
+  return state?.ws?.readyState === WebSocket.OPEN;
+}
+
+// =============================================================================
 // Internal Types for Handler Functions
 // =============================================================================
 
@@ -503,10 +701,7 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
   const [todos, setTodos] = useState<TodoItem[] | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
 
-  // Refs
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Refs (no longer need wsRef - using shared WebSocket)
   const lastSeqRef = useRef(0);
   const currentAssistantMessageRef = useRef<string | null>(null);
   // Use refs to avoid stale closures in handleMessage
@@ -580,95 +775,57 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
 
   /**
    * Connect to the WebSocket server.
+   * Uses module-level singleton to survive React StrictMode remounts.
    */
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    // Check if already connected via shared WebSocket
+    if (isSharedWebSocketConnected(url)) {
+      setStatus('connected');
       return;
     }
 
     setStatus('connecting');
     setError(null);
 
-    const ws = new WebSocket(url);
-
-    ws.onopen = () => {
-      setStatus('connected');
-      reconnectAttemptsRef.current = 0;
-      onConnect?.();
-
-      // Subscribe to session if we have one
-      if (sessionId) {
-        ws.send(
-          JSON.stringify({
-            type: 'system',
-            seq: 0,
-            timestamp: Date.now(),
-            payload: {
-              action: 'subscribe',
-              sessionId,
-            },
-          })
-        );
+    createSharedWebSocket(url, () => {
+      // On connect, subscribe to session if we have one
+      const state = getSharedState(url);
+      if (sessionId && state.ws?.readyState === WebSocket.OPEN) {
+        if (state.subscribedSession !== sessionId) {
+          console.log('[WS] Auto-subscribing to session:', sessionId);
+          state.subscribedSession = sessionId;
+          state.ws.send(
+            JSON.stringify({
+              type: 'system',
+              seq: 0,
+              timestamp: Date.now(),
+              payload: {
+                action: 'subscribe',
+                sessionId,
+              },
+            })
+          );
+        }
       }
-    };
-
-    ws.onmessage = handleMessage;
-
-    ws.onclose = () => {
-      setStatus('disconnected');
-      wsRef.current = null;
-      onDisconnect?.();
-
-      // Attempt reconnect
-      if (autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
-        setStatus('reconnecting');
-        reconnectTimeoutRef.current = setTimeout(() => {
-          reconnectAttemptsRef.current++;
-          connect();
-        }, reconnectDelay * Math.pow(2, reconnectAttemptsRef.current));
-      }
-    };
-
-    ws.onerror = () => {
-      setError('Connection error');
-    };
-
-    wsRef.current = ws;
-  }, [
-    url,
-    sessionId,
-    autoReconnect,
-    maxReconnectAttempts,
-    reconnectDelay,
-    onConnect,
-    onDisconnect,
-    handleMessage,
-  ]);
+    });
+  }, [url, sessionId]);
 
   /**
    * Disconnect from the WebSocket server.
+   * Note: This only disconnects this hook instance's interest in the connection.
+   * The shared WebSocket stays open if other listeners exist.
    */
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
-    // Only close if we're actually connected or connecting
-    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-      reconnectAttemptsRef.current = maxReconnectAttempts; // Prevent auto-reconnect
-      wsRef.current.close();
-      wsRef.current = null;
-      setStatus('disconnected');
-    }
-  }, [maxReconnectAttempts]);
+    setStatus('disconnected');
+    // The actual WebSocket cleanup happens via the listener cleanup in useEffect
+  }, []);
 
   /**
    * Send a message to Claude.
    */
   const send = useCallback(
     (content: string) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      if (!isSharedWebSocketConnected(url)) {
         setError('Not connected');
         return;
       }
@@ -713,8 +870,9 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
         },
       ]);
 
-      // Send the message
-      wsRef.current.send(
+      // Send the message via shared WebSocket
+      sendViaSharedWebSocket(
+        url,
         JSON.stringify({
           type: 'chat',
           seq: 0,
@@ -727,18 +885,19 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
         })
       );
     },
-    [sessionId]
+    [url, sessionId]
   );
 
   /**
    * Cancel the current streaming response.
    */
   const cancel = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (!isSharedWebSocketConnected(url)) {
       return;
     }
 
-    wsRef.current.send(
+    sendViaSharedWebSocket(
+      url,
       JSON.stringify({
         type: 'chat',
         seq: 0,
@@ -749,7 +908,7 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
         },
       })
     );
-  }, [sessionId]);
+  }, [url, sessionId]);
 
   /**
    * Clear chat history.
@@ -763,21 +922,42 @@ export function useClaude(options: UseClaudeOptions): UseClaudeReturn {
     setError(null);
   }, []);
 
-  // Auto-connect on mount (only run once)
-  // Note: We don't disconnect on unmount because React StrictMode double-mounts
-  // and would immediately disconnect the connection we just made
-  // Small delay helps with iOS Safari race condition on first load
+  // Register message and connection listeners with the shared WebSocket.
+  // This is the key pattern from Andy Core - listeners survive StrictMode remounts.
   useEffect(() => {
-    if (autoConnect && !wsRef.current) {
-      const timeoutId = setTimeout(() => {
-        if (!wsRef.current) {
-          connect();
-        }
+    // Register message listener
+    const unregisterMessage = registerMessageListener(url, handleMessage);
+
+    // Register connection listener
+    const unregisterConnection = registerConnectionListener(url, (connected, reconnecting) => {
+      if (connected) {
+        setStatus('connected');
+        onConnect?.();
+      } else if (reconnecting) {
+        setStatus('reconnecting');
+      } else {
+        setStatus('disconnected');
+        onDisconnect?.();
+      }
+    });
+
+    // Auto-connect after a small delay (helps with iOS Safari)
+    let connectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    if (autoConnect) {
+      connectTimeoutId = setTimeout(() => {
+        connect();
       }, 300);
-      return () => clearTimeout(timeoutId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+    // Cleanup: unregister listeners (shared WebSocket closes when no listeners remain)
+    return () => {
+      if (connectTimeoutId) {
+        clearTimeout(connectTimeoutId);
+      }
+      unregisterMessage();
+      unregisterConnection();
+    };
+  }, [url, autoConnect, handleMessage, onConnect, onDisconnect, connect]);
 
   // Update streaming message content in real-time
   useEffect(() => {
