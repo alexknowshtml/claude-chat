@@ -22,6 +22,26 @@ The key: run CC Chat Kit on the same machine where Claude Code is installed and 
 
 This project wraps the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (Anthropic's official terminal tool) to enable building web-based interfaces. It does **not** use the Anthropic API directly—it spawns the CLI as a subprocess.
 
+## How It Works
+
+```
+┌─────────────────┐     WebSocket      ┌─────────────────┐
+│   React App     │ ◄────────────────► │   Bun Server    │
+│   useClaude()   │    (port 3457)     │                 │
+└─────────────────┘                    └────────┬────────┘
+                                                │
+                                                │ Bun.spawn()
+                                                ▼
+                                       ┌─────────────────┐
+                                       │   Claude CLI    │
+                                       │  stream-json    │
+                                       └─────────────────┘
+```
+
+The server spawns Claude CLI with `--output-format stream-json` and parses the streaming output, broadcasting events to connected WebSocket clients.
+
+---
+
 ## Quick Start
 
 ### 1. Install dependencies
@@ -256,25 +276,7 @@ interface WebSocketMessage<T> {
 | `catch_up` | Client → Server | Request missed events |
 | `snapshot` | Server → Client | State snapshot for catch-up |
 
-## Architecture
-
-### System Overview
-
-```
-┌─────────────────┐     WebSocket      ┌─────────────────┐
-│   React App     │ ◄────────────────► │   Bun Server    │
-│   useClaude()   │    (port 3457)     │                 │
-└─────────────────┘                    └────────┬────────┘
-                                                │
-                                                │ Bun.spawn()
-                                                ▼
-                                       ┌─────────────────┐
-                                       │   Claude CLI    │
-                                       │  stream-json    │
-                                       └─────────────────┘
-```
-
-The server spawns Claude CLI with `--output-format stream-json` and parses the streaming output, broadcasting events to connected WebSocket clients.
+## Architecture Details
 
 ### Message Flow
 
