@@ -389,7 +389,7 @@ export default function App() {
                 ? 'Connecting...'
                 : isStreaming
                 ? 'Claude is responding...'
-                : 'Type a message... (Shift+Enter for new line)'
+                : 'Type a message...'
             }
             disabled={status !== 'connected'}
             className={`input ${pastedBlocks.length > 0 ? 'has-pasted' : ''}`}
